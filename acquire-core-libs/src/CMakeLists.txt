@@ -1,0 +1,5 @@
+aq_require(acquire-core-logger)
+aq_require(acquire-core-platform)
+aq_require(acquire-device-properties)
+aq_require(acquire-device-kit)
+aq_require(acquire-device-hal)
