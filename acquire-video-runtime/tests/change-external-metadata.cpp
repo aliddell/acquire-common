@@ -64,6 +64,14 @@ acquire(AcquireRuntime* runtime,
     OK(acquire_start(runtime));
     OK(acquire_stop(runtime));
 
+    OK(acquire_get_configuration(runtime, props));
+    EXPECT(
+      0 == strcmp(external_metadata_json,
+                  props->video[0].storage.settings.external_metadata_json.str),
+      "Expected: %s\nActual: %s",
+      external_metadata_json,
+      props->video[0].storage.settings.external_metadata_json.str);
+
     LOG(R"(Done "%s")", external_metadata_json);
 }
 
