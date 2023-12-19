@@ -1,4 +1,5 @@
-// Just check that we can instance the types.
+/// @file instance-types.cpp
+/// Just check that we can instance the types.
 
 #include "device/kit/driver.h"
 #include "device/kit/storage.h"

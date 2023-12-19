@@ -1,3 +1,4 @@
+//! @file abort-while-waiting-for-trigger.cpp
 //! Test: Aborting an acquisition while waiting for a trigger should return
 //! the runtime to a stopped state without generating errors.
 

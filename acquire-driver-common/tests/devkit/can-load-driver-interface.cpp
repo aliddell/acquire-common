@@ -1,3 +1,6 @@
+/// @file can-load-driver-interface.cpp
+/// Tests that the driver interface can be loaded.
+
 #include "platform.h"
 #include "logger.h"
 

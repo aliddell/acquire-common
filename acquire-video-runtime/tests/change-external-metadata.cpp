@@ -1,3 +1,7 @@
+/// @file change-external-metadata.cpp
+/// Test that we can change the external metadata string in the storage
+/// properties.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "logger.h"
