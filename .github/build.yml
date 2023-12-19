@@ -29,8 +29,6 @@ jobs:
           access_token: ${{ github.token }}
 
       - uses: actions/checkout@v3
-        with:
-          submodules: true
 
       - name: CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build_type}} -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
