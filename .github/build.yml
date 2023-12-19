@@ -2,14 +2,20 @@ name: Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   build:
     strategy:
       matrix:
-        build_type: [ Debug, Release ]
-        platform: [ "windows-latest", "ubuntu-latest", "macos-latest" ]
+        build_type:
+          - Debug
+          - Release
+        platform:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
 
     runs-on: ${{ matrix.platform }}
 

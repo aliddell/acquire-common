@@ -1,0 +1,209 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "nightly"
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  test-acquire-core-libs:
+    name: Test acquire-core-libs on ${{ matrix.platform }}
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.10.0
+        with:
+          access_token: ${{ github.token }}
+
+      - uses: actions/checkout@v3
+
+      - name: Install Cmake 3.23
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install cmake-data
+          wget -O cmake.sh https://cmake.org/files/v3.23/cmake-3.23.2-linux-x86_64.sh
+          sudo bash cmake.sh --skip-license --exclude-subdir --prefix=/usr/local
+        shell: bash
+
+      - name: Configure CMake
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build/acquire-core-libs
+        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure
+
+  test-acquire-video-runtime:
+    name: Test acquire-video-runtime on ${{ matrix.platform }}
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.10.0
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v3
+      - name: Install Cmake 3.23
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install cmake-data
+          wget -O cmake.sh https://cmake.org/files/v3.23/cmake-3.23.2-linux-x86_64.sh
+          sudo bash cmake.sh --skip-license --exclude-subdir --prefix=/usr/local
+        shell: bash
+
+      - name: Configure CMake
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build/acquire-video-runtime
+        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure
+
+  test-acquire-driver-common:
+    name: Test acquire-driver-common on ${{ matrix.platform }}
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.10.0
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v3
+      - name: Install Cmake 3.23
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install cmake-data
+          wget -O cmake.sh https://cmake.org/files/v3.23/cmake-3.23.2-linux-x86_64.sh
+          sudo bash cmake.sh --skip-license --exclude-subdir --prefix=/usr/local
+        shell: bash
+
+      - name: Configure CMake
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build/acquire-driver-common
+        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure
+
+  build:
+    name: Build on ${{ matrix.platform }}
+    strategy:
+      matrix:
+        platform:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.platform }}
+    needs: # don't release if the tests are failing
+      - test-acquire-core-libs
+      - test-acquire-video-runtime
+      - test-acquire-driver-common
+
+    permissions:
+      actions: write
+
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.10.0
+        with:
+          access_token: ${{ github.token }}
+
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Install Cmake 3.23
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install cmake-data
+          wget -O cmake.sh https://cmake.org/files/v3.23/cmake-3.23.2-linux-x86_64.sh
+          sudo bash cmake.sh --skip-license --exclude-subdir --prefix=/usr/local
+        shell: bash
+
+      - name: Package
+        run: |
+          cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Release -DNOTEST=1 -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          cmake --build ${{github.workspace}}/build --config Release
+          cpack --config ${{github.workspace}}/build/CPackConfig.cmake -C Release -G ZIP
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ${{matrix.platform}} binaries
+          path: ${{github.workspace}}/*.zip
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: # don't release if the tests are failing
+      - test-acquire-core-libs
+      - test-acquire-video-runtime
+      - test-acquire-driver-common
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+        id: download
+        with:
+          path: ${{ github.workspace }}/artifacts
+
+      - name: Tagged release
+        if: ${{ github.ref_name != 'nightly' }}
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ github.token }}
+          prerelease: false
+          files: |
+            ${{steps.download.outputs.download-path}}/*/*.zip
+
+      - name: Nightly release
+        if: ${{ github.ref_name == 'nightly' }}
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.PAT }}
+          automatic_release_tag: "nightly"
+          prerelease: true
+          title: "Nightly Release"
+          files: |
+            ${{steps.download.outputs.download-path}}/*/*.zip
