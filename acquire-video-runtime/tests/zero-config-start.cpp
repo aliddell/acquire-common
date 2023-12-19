@@ -1,3 +1,6 @@
+/// @file zero-config-start.cpp
+/// Attempting to start the runtime without any configuration should fail.
+
 #include "acquire.h"
 #include "logger.h"
 

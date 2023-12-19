@@ -1,3 +1,6 @@
+/// @file filter-video-average.cpp
+/// Test that the frame average filter works as expected.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "platform.h"

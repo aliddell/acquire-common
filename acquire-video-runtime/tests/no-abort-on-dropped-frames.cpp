@@ -1,3 +1,4 @@
+/// @file no-abort-on-dropped-frames.cpp
 /// If, during acquisition, we have dropped any frames, as determined by a gap
 /// in the sequence of frame IDs, acquisition should NOT abort.
 

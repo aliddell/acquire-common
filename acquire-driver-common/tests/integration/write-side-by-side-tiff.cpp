@@ -1,3 +1,6 @@
+/// @file write-side-by-side-tiff.cpp
+/// Test that the side-by-side tiff/JSON writer writes a TIFF file and a JSON file.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "platform.h"
@@ -142,7 +145,6 @@ acquire(AcquireRuntime* runtime, const char* filename)
 int
 main()
 {
-
     auto runtime = acquire_init(reporter);
     const char* filename = TEST ".dir";
     acquire(runtime, filename);

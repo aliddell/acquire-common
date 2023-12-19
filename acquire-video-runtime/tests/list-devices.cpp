@@ -1,3 +1,6 @@
+/// @file list-devices.cpp
+/// Test that we can list devices using the device manager.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "logger.h"
@@ -32,7 +35,7 @@ reporter(int is_error,
 }
 
 int
-main(int n, char** args)
+main()
 {
     auto runtime = acquire_init(reporter);
     CHECK(runtime);

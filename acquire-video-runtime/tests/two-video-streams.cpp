@@ -1,3 +1,6 @@
+/// @file two-video-streams.cpp
+/// Test that we can consistently acquire frames from two video streams.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "platform.h"

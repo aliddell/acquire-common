@@ -25,7 +25,6 @@ else ()
             two-video-streams
             unit-tests
             zero-config-start
-            write-side-by-side-tiff
             filter-video-average
     )
 
