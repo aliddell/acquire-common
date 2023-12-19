@@ -1,5 +1,0 @@
-if(${NOTEST})
-    message(STATUS "Skipping test targets")
-else()
-    set(project acquire-common)
-endif()

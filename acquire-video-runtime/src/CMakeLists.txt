@@ -1,7 +1,3 @@
-if(NOT TARGET acquire-core-logger)
-        add_subdirectory(acquire-core-libs)
-endif()
-
 set(tgt acquire-video-runtime)
 add_library(${tgt} STATIC
         acquire.c
