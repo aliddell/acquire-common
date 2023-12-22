@@ -1,3 +1,6 @@
+/// @file repeat-start.cpp
+/// Test that we can start and stop repeatedly without issue.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "platform.h"

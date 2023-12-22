@@ -6,7 +6,6 @@ install
 CMakeSettings.json
 .vs
 TestResults
-cmake-build-debug-visual-studio-coverage
 cmake-build*
 .DS_Store
 *.zip

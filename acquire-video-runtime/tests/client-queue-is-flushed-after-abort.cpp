@@ -1,3 +1,4 @@
+/// @file client-queue-is-flushed-after-abort.cpp
 /// Frames acquired in a failed run should not remain on the queue when the next
 /// acquisition begins.
 

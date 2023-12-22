@@ -1,3 +1,4 @@
+/// @file repeat-start-no-stop.cpp
 /// Calling acquire_start() twice without stopping in between should return an
 /// error.
 

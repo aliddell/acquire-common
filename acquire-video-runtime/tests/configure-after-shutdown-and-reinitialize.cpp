@@ -1,3 +1,6 @@
+/// @file configure-after-shutdown-and-reinitialize.cpp
+/// Test that we are able to reinitialize and reconfigure after shutdown.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "logger.h"

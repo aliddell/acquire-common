@@ -1,3 +1,7 @@
+/// @file change-external-metadata.cpp
+/// Test that we can change the external metadata string in the storage
+/// properties.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "logger.h"
@@ -59,6 +63,14 @@ acquire(AcquireRuntime* runtime,
     OK(acquire_configure(runtime, props));
     OK(acquire_start(runtime));
     OK(acquire_stop(runtime));
+
+    OK(acquire_get_configuration(runtime, props));
+    EXPECT(
+      0 == strcmp(external_metadata_json,
+                  props->video[0].storage.settings.external_metadata_json.str),
+      "Expected: %s\nActual: %s",
+      external_metadata_json,
+      props->video[0].storage.settings.external_metadata_json.str);
 
     LOG(R"(Done "%s")", external_metadata_json);
 }

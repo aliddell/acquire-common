@@ -1,4 +1,4 @@
-/// @file
+/// @file storage-get-meta.cpp
 /// @brief Check that all storage devices implement the get_meta function.
 /// Also, since none of the basic storage devices support chunking or
 /// multiscale, check that this is reflected in the metadata.

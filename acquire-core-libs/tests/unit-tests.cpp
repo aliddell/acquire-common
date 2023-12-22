@@ -1,3 +1,6 @@
+/// @file unit-tests.cpp
+/// Runs all unit tests in this project.
+
 // This is a "unit test" driver.
 //
 // Adding unit test functions here will run them as part of the CTest suite

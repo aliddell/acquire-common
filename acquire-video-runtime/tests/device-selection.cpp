@@ -1,3 +1,6 @@
+/// @file device-selection.cpp
+/// Test that device selection behavior is well defined and consistent.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "logger.h"

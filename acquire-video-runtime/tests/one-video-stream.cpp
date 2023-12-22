@@ -1,3 +1,6 @@
+/// @file one-video-stream.cpp
+/// Test that we can consistently acquire frames from a single video stream.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "platform.h"

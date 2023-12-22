@@ -1,4 +1,4 @@
-/// @file
+/// @file list-devices.cpp
 /// @brief Lists the devices exposed by this driver.
 /// Exercises the device enumeration interface.
 

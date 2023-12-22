@@ -1,3 +1,4 @@
+//! @file software-trigger-acquires-single-frames.cpp
 //! Test: For simulated cameras, software trigger events should be usable to
 //! control acquisition of single frames.
 

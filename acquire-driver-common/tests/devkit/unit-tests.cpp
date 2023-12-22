@@ -1,3 +1,6 @@
+/// @file unit-tests.cpp
+/// Runs all unit tests in this project.
+
 #include "platform.h"
 #include "logger.h"
 

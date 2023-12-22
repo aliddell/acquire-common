@@ -1,3 +1,6 @@
+/// @file change-file-name.cpp
+/// Test that we can change the file name in the storage properties.
+
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "device/props/storage.h"

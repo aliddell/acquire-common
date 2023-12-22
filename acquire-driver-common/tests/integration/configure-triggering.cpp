@@ -1,3 +1,4 @@
+//! @file configure-triggering.cpp
 //! Checks various trigger setting manipulation on the simulated camera
 
 #include "acquire.h"

@@ -1,3 +1,4 @@
+/// @file abort-or-stop.cpp
 /// Calling acquire_abort() should immediately terminate acquisition.
 /// Calling acquire_stop() should wait until the frame count is reached.
 
