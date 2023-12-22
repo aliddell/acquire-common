@@ -75,16 +75,15 @@ This is an Acquire Driver that exposes commonly used devices.
 
 - **simulated: uniform random** - Produces uniform random noise for each pixel.
 - **simulated: radial sin** - Produces an animated radial sin-wave pattern.
-- **simulated: empty** - Produces no data, leaving a image buffers blank. Simulates going as fast as possible.
+- **simulated: empty** - Produces no data, leaving image buffers blank. Simulates going as fast as possible.
 
 #### Storage devices
 
 - **raw** - Streams to a raw binary file.
-- **tiff** - Streams to a [bigtiff][] file. Metadata is stored in the `ImageDescription` tag for each frame as a `json`
+- **tiff** - Streams to a [bigtiff] file. Metadata is stored in the `ImageDescription` tag for each frame as a `json`
   string.
 - **tiff-json** - Stores the video stream in a *bigtiff* (as above) and stores metadata in a `json` file. Both are
-  located
-  in a folder identified by the `filename` property.
+  located in a folder identified by the `filename` property.
 - **Trash** - Writes nothing. Discards incoming data.
 
 [bigtiff]: http://bigtiff.org/
