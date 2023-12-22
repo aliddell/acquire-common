@@ -14,8 +14,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 
-aq_require(acquire-core-libs)
-aq_require(acquire-video-runtime)
-aq_require(acquire-driver-common)
+add_subdirectory(acquire-core-libs)
+add_subdirectory(acquire-video-runtime)
+add_subdirectory(acquire-driver-common)
 
 include(CPack)
