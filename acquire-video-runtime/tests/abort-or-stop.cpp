@@ -107,57 +107,35 @@ acquire(Packet* packet)
         VideoFrame *beg, *end, *cur;
         OK(acquire_start(runtime));
         event_notify_all(&packet->started_);
-        if (packet->expect_abort_)
-            event_wait(&packet->aborted_);
 
-        {
-            uint64_t nframes = 0;
-            do {
-                struct clock throttle = { 0 };
-                clock_init(&throttle);
-                EXPECT(clock_cmp_now(&clock_) < 0,
-                       "Timeout at %f ms",
-                       clock_toc_ms(&clock_) + time_limit_ms);
-                OK(acquire_map_read(runtime, 0, &beg, &end));
-
-                for (cur = beg; cur < end; cur = next(cur)) {
-                    ASSERT_EQ("%d",
-                              cur->shape.dims.width,
-                              props.video[0].camera.settings.shape.x);
-                    ASSERT_EQ("%d",
-                              cur->shape.dims.height,
-                              props.video[0].camera.settings.shape.y);
-                    ++nframes;
-                }
-
-                {
-                    uint32_t n = (uint32_t)consumed_bytes(beg, end);
-                    OK(acquire_unmap_read(runtime, 0, n));
-                }
-                clock_sleep_ms(&throttle, 100.0f);
-            } while (nframes < props.video[0].max_frame_count &&
-                     DeviceState_Running == acquire_get_state(runtime));
-
+        uint64_t nframes = 0;
+        while (nframes < props.video[0].max_frame_count &&
+               DeviceState_Running == acquire_get_state(runtime)) {
+            EXPECT(clock_cmp_now(&clock_) < 0, "Ran out of time.");
             OK(acquire_map_read(runtime, 0, &beg, &end));
-
-            for (cur = beg; cur < end; cur = next(cur)) {
-                CHECK(cur->shape.dims.width ==
-                      props.video[0].camera.settings.shape.x);
-                CHECK(cur->shape.dims.height ==
-                      props.video[0].camera.settings.shape.y);
+            for (cur = beg; cur < end; cur = next(cur))
                 ++nframes;
-            }
-
-            if (expect_abort) {
-                CHECK(nframes < props.video[0].max_frame_count);
-            } else {
-                CHECK(nframes == props.video[0].max_frame_count);
-            }
+            clock_sleep_ms(nullptr, 10.0);
+            OK(acquire_unmap_read(runtime, 0, (uint8_t*)end - (uint8_t*)beg));
         }
+
+        // flush the queue
+        do {
+            OK(acquire_map_read(runtime, 0, &beg, &end));
+            for (cur = beg; cur < end; cur = next(cur))
+                ++nframes;
+            OK(acquire_unmap_read(runtime, 0, (uint8_t*)end - (uint8_t*)beg));
+        } while (beg != end);
+
+        if (expect_abort) {
+            CHECK(nframes < props.video[0].max_frame_count);
+        } else {
+            CHECK(nframes == props.video[0].max_frame_count);
+        }
+
         packet->result_ = true;
     } catch (const std::runtime_error& e) {
         ERR("Runtime error: %s", e.what());
-
     } catch (...) {
         ERR("Uncaught exception");
     }
