@@ -54,7 +54,7 @@ reporter(int is_error,
 struct Packet
 {
     AcquireRuntime* runtime_;
-    struct event started_, aborted_;
+    struct event started_;
     int expect_abort_;
     bool result_;
 };
@@ -156,28 +156,23 @@ main()
                        .expect_abort_ = 1,
                        .result_ = false };
         event_init(&packet.started_);
-        event_init(&packet.aborted_);
 
         thread_create(&t_, (void (*)(void*))acquire, &packet);
         event_wait(&packet.started_);
         acquire_abort(runtime);
-        event_notify_all(&packet.aborted_);
         thread_join(&t_);
         event_destroy(&packet.started_);
-        event_destroy(&packet.aborted_);
         EXPECT(packet.result_ == true, "Something went wrong in 'abort' test.");
 
         // stop waits until finished
         packet =
           Packet{ .runtime_ = runtime, .expect_abort_ = 0, .result_ = false };
         event_init(&packet.started_);
-        event_init(&packet.aborted_);
         thread_create(&t_, (void (*)(void*))acquire, &packet);
         event_wait(&packet.started_);
         acquire_stop(runtime);
         thread_join(&t_);
         event_destroy(&packet.started_);
-        event_destroy(&packet.aborted_);
         EXPECT(packet.result_ == true, "Something went wrong in 'stop' test.");
 
         acquire_shutdown(runtime);
