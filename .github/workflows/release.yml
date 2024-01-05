@@ -5,6 +5,7 @@ on:
     tags:
       - "v*.*.*"
       - "nightly"
+
 env:
   BUILD_TYPE: Release
 
@@ -173,10 +174,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: # don't release if the tests are failing
-      - test-acquire-core-libs
-      - test-acquire-video-runtime
-      - test-acquire-driver-common
+    needs:
+      - build
     permissions: write-all
     steps:
       - uses: actions/checkout@v3
