@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- `reserve_image_shape` is now called in `acquire_configure` rather than `acquire_start`.
+
+## 0.2.0 - 2024-01-05
+
 ### Added
 
 - Additional validation in `test-change-external-metadata`.
