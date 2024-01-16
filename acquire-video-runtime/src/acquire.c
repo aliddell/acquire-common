@@ -575,7 +575,6 @@ acquire_abort(struct AcquireRuntime* self_)
 
         video->source.is_stopping = 1;
         channel_accept_writes(&video->sink.in, 0);
-        camera_stop(video->source.camera);
     }
 
     return acquire_stop(self_);
