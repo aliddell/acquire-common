@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A bug where changing device identifiers for the storage device was not being handled correctly.
+- A race condition where `camera_get_frame()` might be called after `camera_stop()` when aborting acquisition.
 
 ### Changed
 
