@@ -33,7 +33,7 @@ copy_string(struct String* dst, const struct String* src)
         // Allocate a new string on the heap.
         CHECK(dst->str = malloc(src->nbytes)); // NOLINT
         dst->nbytes = src->nbytes;
-        dst->is_ref = 0;                       // mark as owned
+        dst->is_ref = 0; // mark as owned
     }
 
     CHECK(dst->is_ref == 0);
