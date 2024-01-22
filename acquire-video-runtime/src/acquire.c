@@ -1,6 +1,7 @@
 #include "acquire.h"
 
 #include "device/hal/camera.h"
+#include "device/props/device.h"
 #include "logger.h"
 #include "platform.h"
 #include "runtime/channel.h"
@@ -10,6 +11,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#define max(a, b) ((a) < (b) ? (b) : (a))
 
 #define containerof(ptr, T, V) ((T*)(((char*)(ptr)) - offsetof(T, V)))
 #define countof(e) (sizeof(e) / sizeof(*(e)))
@@ -258,20 +261,20 @@ configure_video_stream(struct video_s* const video,
     struct aq_properties_storage_s* const pstorage = &pvideo->storage;
 
     int is_ok = 1;
-    is_ok &= (video_source_configure(&video->source,
-                                     device_manager,
-                                     &pcamera->identifier,
-                                     &pcamera->settings,
-                                     pvideo->max_frame_count,
-                                     pvideo->frame_average_count > 1) == Device_Ok);
+    is_ok &=
+      (video_source_configure(&video->source,
+                              device_manager,
+                              &pcamera->identifier,
+                              &pcamera->settings,
+                              pvideo->max_frame_count,
+                              pvideo->frame_average_count > 1) == Device_Ok);
     is_ok &= (video_filter_configure(&video->filter,
                                      pvideo->frame_average_count) == Device_Ok);
-    is_ok &=
-      (video_sink_configure(&video->sink,
-                            device_manager,
-                            &pstorage->identifier,
-                            &pstorage->settings,
-                            pstorage->write_delay_ms) == Device_Ok);
+    is_ok &= (video_sink_configure(&video->sink,
+                                   device_manager,
+                                   &pstorage->identifier,
+                                   &pstorage->settings,
+                                   pstorage->write_delay_ms) == Device_Ok);
     is_ok &= reserve_image_shape(video);
 
     EXPECT(is_ok, "Failed to configure video stream.");
@@ -288,7 +291,7 @@ Error:
 static int
 video_stream_requirements_check(struct aq_properties_video_s* video_settings)
 {
-    if (video_settings->camera.identifier.kind == DeviceKind_None &&
+    if (video_settings->camera.identifier.kind == DeviceKind_None ||
         video_settings->storage.identifier.kind == DeviceKind_None) {
         return 0;
     }
@@ -322,9 +325,13 @@ acquire_configure(struct AcquireRuntime* self_,
         }
     }
     TRACE("Valid video streams: code %#04x", self->valid_video_streams);
-    self->state = self->valid_video_streams > 0
-                    ? DeviceState_Armed
-                    : DeviceState_AwaitingConfiguration;
+    if (self->valid_video_streams == 0) {
+        acquire_abort(self_); // aborts, moves to an Armed state
+        self->state = DeviceState_AwaitingConfiguration;
+    } else {
+        // success, moved to armed state or leave running
+        self->state = max(self->state, DeviceState_Armed);
+    }
     return AcquireStatus_Ok;
 Error:
     if (self_)
