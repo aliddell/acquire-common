@@ -261,6 +261,11 @@ configure_video_stream(struct video_s* const video,
     struct aq_properties_storage_s* const pstorage = &pvideo->storage;
 
     int is_ok = 1;
+    if (pcamera->identifier.kind == DeviceKind_None) {
+        is_ok &= (Device_Ok == device_manager_select_default(
+                    device_manager, DeviceKind_Camera, &pcamera->identifier));
+    }
+
     is_ok &=
       (video_source_configure(&video->source,
                               device_manager,
@@ -270,6 +275,11 @@ configure_video_stream(struct video_s* const video,
                               pvideo->frame_average_count > 1) == Device_Ok);
     is_ok &= (video_filter_configure(&video->filter,
                                      pvideo->frame_average_count) == Device_Ok);
+
+    if (pstorage->identifier.kind == DeviceKind_None) {
+        is_ok &= (Device_Ok == device_manager_select_default(
+                                 device_manager, DeviceKind_Camera, &pstorage->identifier));
+    }
     is_ok &= (video_sink_configure(&video->sink,
                                    device_manager,
                                    &pstorage->identifier,
@@ -291,7 +301,7 @@ Error:
 static int
 video_stream_requirements_check(struct aq_properties_video_s* video_settings)
 {
-    if (video_settings->camera.identifier.kind == DeviceKind_None ||
+    if (video_settings->camera.identifier.kind == DeviceKind_None &&
         video_settings->storage.identifier.kind == DeviceKind_None) {
         return 0;
     }
