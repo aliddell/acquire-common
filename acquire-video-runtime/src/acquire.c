@@ -278,7 +278,7 @@ configure_video_stream(struct video_s* const video,
 
     if (pstorage->identifier.kind == DeviceKind_None) {
         is_ok &= (Device_Ok == device_manager_select_default(
-                                 device_manager, DeviceKind_Camera, &pstorage->identifier));
+                                 device_manager, DeviceKind_Storage, &pstorage->identifier));
     }
     is_ok &= (video_sink_configure(&video->sink,
                                    device_manager,
