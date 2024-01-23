@@ -5,10 +5,10 @@
 
 #include "acquire.h"
 #include "device/hal/device.manager.h"
-#include "platform.h"
 #include "logger.h"
 
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 
 void
