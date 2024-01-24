@@ -63,6 +63,9 @@ struct SimulatedCamera
         struct clock throttle;
         int is_running;
         struct thread thread;
+        struct lock lock;
+        int hold_for_capture;
+        struct condition_variable ready_to_capture;
     } streamer;
 
     struct
@@ -226,6 +229,13 @@ simulated_camera_streamer_thread(struct SimulatedCamera* self)
     while (self->streamer.is_running) {
         struct ImageShape full = { 0 };
         uint32_t origin[2] = { 0, 0 };
+
+        ECHO(lock_acquire(&self->streamer.lock));
+        while (self->streamer.hold_for_capture) {
+            condition_variable_wait(&self->streamer.ready_to_capture,
+                                    &self->streamer.lock);
+        }
+        ECHO(lock_release(&self->streamer.lock));
 
         ECHO(lock_acquire(&self->im.lock));
         ECHO(compute_full_resolution_shape_and_offset(self, &full, origin));
@@ -466,10 +476,18 @@ simcam_get_frame(struct Camera* camera,
     CHECK(*nbytes >= bytes_of_image(&self->im.shape));
     CHECK(self->streamer.is_running);
 
+    self->streamer.hold_for_capture = 1;
+
     TRACE("last: %5d current %5d",
           self->im.last_emitted_frame_id,
           self->im.frame_id);
     ECHO(lock_acquire(&self->im.lock));
+
+    ECHO(lock_acquire(&self->streamer.lock));
+    self->streamer.hold_for_capture = 0;
+    condition_variable_notify_all(&self->streamer.ready_to_capture);
+    ECHO(lock_release(&self->streamer.lock));
+
     while (self->streamer.is_running &&
            self->im.last_emitted_frame_id >= self->im.frame_id) {
         ECHO(condition_variable_wait(&self->im.frame_ready, &self->im.lock));
@@ -560,6 +578,9 @@ simcam_make_camera(enum BasicDeviceKind kind)
     lock_init(&self->im.lock);
     condition_variable_init(&self->im.frame_ready);
     condition_variable_init(&self->software_trigger.trigger_ready);
+
+    lock_init(&self->streamer.lock);
+    condition_variable_init(&self->streamer.ready_to_capture);
 
     return &self->camera;
 Error:
