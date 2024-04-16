@@ -17,6 +17,7 @@
 #include "logger.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 
@@ -51,8 +52,7 @@ struct SideBySideTiff
 fs::path
 as_path(const StorageProperties& props)
 {
-    return { props.filename.str,
-             props.filename.str + props.filename.nbytes - 1 };
+    return { props.uri.str, props.uri.str + props.uri.nbytes - 1 };
 }
 
 void
@@ -88,8 +88,16 @@ validate(const struct StorageProperties* props)
                   props->external_metadata_json.nbytes);
 
     {
-        fs::path path(props->filename.str,
-                      props->filename.str + props->filename.nbytes);
+        CHECK(props->uri.str);
+        CHECK(props->uri.nbytes);
+
+        const size_t offset = strlen(props->uri.str) >= 7 &&
+                                  strncmp(props->uri.str, "file://", 7) == 0
+                                ? 7
+                                : 0;
+
+        fs::path path(props->uri.str + offset,
+                      (props->uri.str + offset) + (props->uri.nbytes - offset));
         auto parent_path = path.parent_path();
         if (parent_path.empty()) {
             parent_path = fs::path(".");
@@ -110,7 +118,19 @@ side_by_side_tiff_set(struct Storage* self_,
         struct SideBySideTiff* self =
           containerof(self_, struct SideBySideTiff, storage);
         validate(props);
-        self->props = *props;
+        CHECK(storage_properties_copy(&self->props, props));
+
+        const size_t offset = strlen(props->uri.str) >= 7 &&
+                                  strncmp(props->uri.str, "file://", 7) == 0
+                                ? 7
+                                : 0;
+
+        // update the URI if it has a file:// prefix
+        if (offset) {
+            const char* filename = props->uri.str + offset;
+            const size_t nbytes = props->uri.nbytes - offset;
+            CHECK(storage_properties_set_uri(&self->props, filename, nbytes));
+        }
 
     } catch (const std::exception& e) {
         LOGE("Exception: %s\n", e.what());
@@ -190,7 +210,7 @@ side_by_side_tiff_start(struct Storage* self_) noexcept
             const auto video_path = (path / "data.tif").generic_string();
             StorageProperties props{};
             storage_properties_copy(&props, &self->props);
-            props.filename = {
+            props.uri = {
                 .str = (char*)video_path.c_str(),
                 .nbytes = video_path.length(),
                 .is_ref = 1,

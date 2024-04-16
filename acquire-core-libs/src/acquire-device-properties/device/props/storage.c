@@ -160,14 +160,14 @@ Error:;
 }
 
 int
-storage_properties_set_filename(struct StorageProperties* out,
-                                const char* filename,
-                                size_t bytes_of_filename)
+storage_properties_set_uri(struct StorageProperties* out,
+                           const char* uri,
+                           size_t bytes_of_uri)
 {
     const struct String s = { .is_ref = 1,
-                              .nbytes = bytes_of_filename,
-                              .str = (char*)filename };
-    return copy_string(&out->filename, &s);
+                              .nbytes = bytes_of_uri,
+                              .str = (char*)uri };
+    return copy_string(&out->uri, &s);
 }
 
 int
@@ -179,6 +179,26 @@ storage_properties_set_external_metadata(struct StorageProperties* out,
                               .nbytes = bytes_of_metadata,
                               .str = (char*)metadata };
     return copy_string(&out->external_metadata_json, &s);
+}
+
+int
+storage_properties_set_access_key_and_secret(struct StorageProperties* out,
+                                             const char* access_key_id,
+                                             size_t bytes_of_access_key_id,
+                                             const char* secret_access_key,
+                                             size_t bytes_of_secret_access_key)
+{
+    const struct String s = { .is_ref = 1,
+                              .nbytes = bytes_of_access_key_id,
+                              .str = (char*)access_key_id };
+    CHECK(copy_string(&out->access_key_id, &s));
+
+    const struct String t = { .is_ref = 1,
+                              .nbytes = bytes_of_secret_access_key,
+                              .str = (char*)secret_access_key };
+    return copy_string(&out->secret_access_key, &t);
+Error:
+    return 0;
 }
 
 int
@@ -238,8 +258,8 @@ Error:
 int
 storage_properties_init(struct StorageProperties* out,
                         uint32_t first_frame_id,
-                        const char* filename,
-                        size_t bytes_of_filename,
+                        const char* uri,
+                        size_t bytes_of_uri,
                         const char* metadata,
                         size_t bytes_of_metadata,
                         struct PixelScale pixel_scale_um,
@@ -247,7 +267,7 @@ storage_properties_init(struct StorageProperties* out,
 {
     // Allocate and copy filename
     memset(out, 0, sizeof(*out)); // NOLINT
-    CHECK(storage_properties_set_filename(out, filename, bytes_of_filename));
+    CHECK(storage_properties_set_uri(out, uri, bytes_of_uri));
 
     // Set external metadata
     CHECK(storage_properties_set_external_metadata(
@@ -272,22 +292,37 @@ storage_properties_copy(struct StorageProperties* dst,
 {
     // 1. Copy everything except the strings
     {
-        struct String tmp_fname, tmp_meta;
-        memcpy(&tmp_fname, &dst->filename, sizeof(struct String)); // NOLINT
-        memcpy(&tmp_meta,                                          // NOLINT
+        struct String tmp_uri, tmp_meta, tmp_access_key, tmp_secret_key;
+        memcpy(&tmp_uri, &dst->uri, sizeof(struct String)); // NOLINT
+        memcpy(&tmp_meta,                                   // NOLINT
                &dst->external_metadata_json,
                sizeof(struct String));
-        memcpy(dst, src, sizeof(*dst));                            // NOLINT
-        memcpy(&dst->filename, &tmp_fname, sizeof(struct String)); // NOLINT
-        memcpy(&dst->external_metadata_json,                       // NOLINT
+        memcpy(&tmp_access_key,
+               &dst->access_key_id,
+               sizeof(struct String)); // NOLINT
+        memcpy(&tmp_secret_key,
+               &dst->secret_access_key,
+               sizeof(struct String)); // NOLINT
+
+        memcpy(dst, src, sizeof(*dst));                     // NOLINT
+        memcpy(&dst->uri, &tmp_uri, sizeof(struct String)); // NOLINT
+        memcpy(&dst->external_metadata_json,                // NOLINT
                &tmp_meta,
                sizeof(struct String));
+        memcpy(&dst->access_key_id,
+               &tmp_access_key,
+               sizeof(struct String)); // NOLINT
+        memcpy(&dst->secret_access_key,
+               &tmp_secret_key,
+               sizeof(struct String)); // NOLINT
     }
 
     // 2. Reallocate and copy the Strings
-    CHECK(copy_string(&dst->filename, &src->filename));
+    CHECK(copy_string(&dst->uri, &src->uri));
     CHECK(
       copy_string(&dst->external_metadata_json, &src->external_metadata_json));
+    CHECK(copy_string(&dst->access_key_id, &src->access_key_id));
+    CHECK(copy_string(&dst->secret_access_key, &src->secret_access_key));
 
     // 3. Copy the dimensions
     if (src->acquisition_dimensions.data) {
@@ -309,8 +344,10 @@ Error:
 void
 storage_properties_destroy(struct StorageProperties* self)
 {
-    struct String* const strings[] = { &self->filename,
-                                       &self->external_metadata_json };
+    struct String* const strings[] = { &self->uri,
+                                       &self->external_metadata_json,
+                                       &self->access_key_id,
+                                       &self->secret_access_key };
     for (int i = 0; i < countof(strings); ++i) {
         if (strings[i]->is_ref == 0 && strings[i]->str) {
             free(strings[i]->str);
@@ -348,9 +385,9 @@ unit_test__storage__storage_property_string_check()
                                       sizeof(metadata),
                                       pixel_scale_um,
                                       0));
-        CHECK(props.filename.str[props.filename.nbytes - 1] == '\0');
-        ASSERT_EQ(int, "%d", props.filename.nbytes, sizeof(filename));
-        ASSERT_EQ(int, "%d", props.filename.is_ref, 0);
+        CHECK(props.uri.str[props.uri.nbytes - 1] == '\0');
+        ASSERT_EQ(int, "%d", props.uri.nbytes, sizeof(filename));
+        ASSERT_EQ(int, "%d", props.uri.is_ref, 0);
 
         CHECK(props.external_metadata_json
                 .str[props.external_metadata_json.nbytes - 1] == '\0');
@@ -375,9 +412,9 @@ unit_test__storage__storage_property_string_check()
                                   sizeof(metadata),
                                   pixel_scale_um,
                                   0));
-        CHECK(src.filename.str[src.filename.nbytes - 1] == '\0');
-        CHECK(src.filename.nbytes == sizeof(filename));
-        CHECK(src.filename.is_ref == 0);
+        CHECK(src.uri.str[src.uri.nbytes - 1] == '\0');
+        CHECK(src.uri.nbytes == sizeof(filename));
+        CHECK(src.uri.is_ref == 0);
         CHECK(src.pixel_scale_um.x == 1);
         CHECK(src.pixel_scale_um.y == 2);
 
@@ -388,9 +425,9 @@ unit_test__storage__storage_property_string_check()
 
         CHECK(storage_properties_copy(&props, &src));
         storage_properties_destroy(&src);
-        CHECK(props.filename.str[props.filename.nbytes - 1] == '\0');
-        CHECK(props.filename.nbytes == sizeof(filename));
-        CHECK(props.filename.is_ref == 0);
+        CHECK(props.uri.str[props.uri.nbytes - 1] == '\0');
+        CHECK(props.uri.nbytes == sizeof(filename));
+        CHECK(props.uri.is_ref == 0);
 
         CHECK(props.external_metadata_json
                 .str[props.external_metadata_json.nbytes - 1] == '\0');
@@ -499,6 +536,33 @@ unit_test__storage__copy_string()
 
     free(src.str);
     free(dst.str);
+
+    return 1;
+Error:
+    return 0;
+}
+
+int
+unit_test__storage_properties_set_access_key_and_secret()
+{
+    struct StorageProperties props = { 0 };
+    const char access_key_id[] = "access_key_id";
+    const char secret_access_key[] = "secret_access_key";
+
+    CHECK(
+      storage_properties_set_access_key_and_secret(&props,
+                                                   access_key_id,
+                                                   sizeof(access_key_id),
+                                                   secret_access_key,
+                                                   sizeof(secret_access_key)));
+
+    CHECK(0 == strcmp(props.access_key_id.str, access_key_id));
+    CHECK(props.access_key_id.nbytes == sizeof(access_key_id));
+    CHECK(0 == props.access_key_id.is_ref);
+
+    CHECK(0 == strcmp(props.secret_access_key.str, secret_access_key));
+    CHECK(props.secret_access_key.nbytes == sizeof(secret_access_key));
+    CHECK(0 == props.secret_access_key.is_ref);
 
     return 1;
 Error:
