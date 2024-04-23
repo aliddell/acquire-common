@@ -8,6 +8,7 @@
 #include "logger.h"
 #include "platform.h"
 #include <cstring>
+#include <cstdio>
 #include <stdexcept>
 
 void
