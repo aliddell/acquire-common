@@ -27,6 +27,7 @@ else ()
             unit-tests
             zero-config-start
             filter-video-average
+            repeat-start-no-monitor
     )
 
     foreach (name ${tests})
