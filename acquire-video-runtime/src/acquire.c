@@ -562,9 +562,9 @@ acquire_stop(struct AcquireRuntime* self_)
         ECHO(thread_join(&video->sink.thread));
         channel_accept_writes(&video->sink.in, 1);
 
-        // Flush the monitor's read region if it hasn't already been released.
-        // This takes at most 2 iterations.
-        {
+        // If the monitor has been initialized and its read region hasn't
+        // already been released, flush it. This takes at most 2 iterations.
+        if (video->monitor.reader.id) {
             size_t nbytes;
             do {
                 struct slice slice =
