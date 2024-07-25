@@ -1,11 +1,12 @@
-/// @file switch-storage-identifier.cpp
-/// Test that we can switch storage identifiers without destroying the storage device.
+/// @file can-set-with-file-uri.cpp
+/// Test that we can use a file:// URI when configuring basic Storage devices.
 
 #include "acquire.h"
 #include "device/hal/device.manager.h"
 #include "logger.h"
 
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <filesystem>
 
@@ -76,27 +77,7 @@ configure_camera(AcquireRuntime* runtime)
 }
 
 void
-configure_storage_trash(AcquireRuntime* runtime)
-{
-    CHECK(runtime);
-
-    AcquireProperties props = {};
-    OK(acquire_get_configuration(runtime, &props));
-
-    auto* dm = acquire_device_manager(runtime);
-    CHECK(dm);
-
-    props.video[0].storage = { 0 };
-    DEVOK(device_manager_select(dm,
-                                DeviceKind_Storage,
-                                SIZED("trash"),
-                                &props.video[0].storage.identifier));
-
-    OK(acquire_configure(runtime, &props));
-}
-
-void
-configure_storage_tiff(AcquireRuntime* runtime)
+configure_storage_tiff(AcquireRuntime* runtime, const std::string& filename)
 {
     CHECK(runtime);
 
@@ -112,29 +93,64 @@ configure_storage_tiff(AcquireRuntime* runtime)
                                 SIZED("tiff"),
                                 &props.video[0].storage.identifier));
 
-    storage_properties_set_uri(&props.video[0].storage.settings,
-                               SIZED(TEST ".tif") + 1);
+    storage_properties_set_uri(
+      &props.video[0].storage.settings, filename.c_str(), filename.size() + 1);
 
     OK(acquire_configure(runtime, &props));
 }
 
 void
-validate_storage_tiff()
+validate_storage_tiff(AcquireRuntime* runtime)
 {
     const std::string file_path = TEST ".tif";
-    EXPECT(
-      fs::exists(file_path), "Expected file to exist: %s", file_path.c_str());
 
-    const auto file_size = fs::file_size(file_path);
-    EXPECT(file_size >= 64 * 48 * nframes,
-           "Expected file to have size at least %d (has size %d): %s",
-           64 * 48 * nframes,
-           file_size,
-           file_path.c_str());
+    AcquireProperties props = {};
+    OK(acquire_get_configuration(runtime, &props));
+
+    CHECK(0 == strncmp(props.video[0].storage.settings.uri.str,
+                       file_path.c_str(),
+                       file_path.size() + 1));
 }
 
 void
-configure_storage_raw(AcquireRuntime* runtime)
+configure_storage_side_by_side_tiff(AcquireRuntime* runtime,
+                                    const std::string& filename)
+{
+    CHECK(runtime);
+
+    AcquireProperties props = {};
+    OK(acquire_get_configuration(runtime, &props));
+
+    auto* dm = acquire_device_manager(runtime);
+    CHECK(dm);
+
+    props.video[0].storage = { 0 };
+    DEVOK(device_manager_select(dm,
+                                DeviceKind_Storage,
+                                SIZED("tiff-json"),
+                                &props.video[0].storage.identifier));
+
+    storage_properties_set_uri(
+      &props.video[0].storage.settings, filename.c_str(), filename.size() + 1);
+
+    OK(acquire_configure(runtime, &props));
+}
+
+void
+validate_storage_side_by_side_tiff(AcquireRuntime* runtime)
+{
+    const std::string file_path = TEST ".tif";
+
+    AcquireProperties props = {};
+    OK(acquire_get_configuration(runtime, &props));
+
+    CHECK(0 == strncmp(props.video[0].storage.settings.uri.str,
+                       file_path.c_str(),
+                       file_path.size() + 1));
+}
+
+void
+configure_storage_raw(AcquireRuntime* runtime, const std::string& filename)
 {
     CHECK(runtime);
 
@@ -151,26 +167,23 @@ configure_storage_raw(AcquireRuntime* runtime)
                                 &props.video[0].storage.identifier));
 
     storage_properties_set_uri(&props.video[0].storage.settings,
-                               SIZED(TEST ".bin") + 1);
+                               filename.c_str(),
+                               filename.size() + 1);
 
     OK(acquire_configure(runtime, &props));
 }
 
 void
-validate_storage_raw()
+validate_storage_raw(AcquireRuntime* runtime)
 {
     const std::string file_path = TEST ".bin";
-    EXPECT(
-      fs::exists(file_path), "Expected file to exist: %s", file_path.c_str());
-    EXPECT(fs::is_regular_file(file_path),
-           "Expected file to exist: %s",
-           file_path.c_str());
-    const auto file_size = fs::file_size(file_path);
-    EXPECT(file_size == (sizeof(VideoFrame) + 64 * 48) * nframes,
-           "Expected file to have size %d (has size %d): %s",
-           64 * 48 * nframes,
-           file_size,
-           file_path.c_str());
+
+    AcquireProperties props = {};
+    OK(acquire_get_configuration(runtime, &props));
+
+    CHECK(0 == strncmp(props.video[0].storage.settings.uri.str,
+                       file_path.c_str(),
+                       file_path.size() + 1));
 }
 
 void
@@ -189,47 +202,23 @@ main()
     try {
         configure_camera(runtime);
 
-        configure_storage_trash(runtime);
-        acquire(runtime);
+        configure_storage_raw(runtime, TEST ".bin");
+        validate_storage_raw(runtime);
 
-        configure_storage_tiff(runtime);
-        acquire(runtime);
-        validate_storage_tiff();
-        fs::remove_all(TEST ".tif");
+        configure_storage_raw(runtime, "file://" TEST ".bin");
+        validate_storage_raw(runtime);
 
-        configure_storage_trash(runtime);
-        acquire(runtime);
+        configure_storage_tiff(runtime, TEST ".tif");
+        validate_storage_tiff(runtime);
 
-        configure_storage_raw(runtime);
-        acquire(runtime);
-        validate_storage_raw();
-        fs::remove_all(TEST ".bin");
+        configure_storage_tiff(runtime, "file://" TEST ".tif");
+        validate_storage_tiff(runtime);
 
-        configure_storage_trash(runtime);
-        acquire(runtime);
+        configure_storage_side_by_side_tiff(runtime, TEST ".tif");
+        validate_storage_side_by_side_tiff(runtime);
 
-        configure_storage_tiff(runtime);
-        acquire(runtime);
-        validate_storage_tiff();
-        fs::remove_all(TEST ".tif");
-
-        configure_storage_raw(runtime);
-        acquire(runtime);
-        validate_storage_raw();
-        fs::remove_all(TEST ".bin");
-
-        configure_storage_trash(runtime);
-        acquire(runtime);
-
-        configure_storage_raw(runtime);
-        acquire(runtime);
-        validate_storage_raw();
-        fs::remove_all(TEST ".bin");
-
-        configure_storage_tiff(runtime);
-        acquire(runtime);
-        validate_storage_tiff();
-        fs::remove_all(TEST ".tif");
+        configure_storage_side_by_side_tiff(runtime, "file://" TEST ".tif");
+        validate_storage_side_by_side_tiff(runtime);
 
     } catch (const std::exception& exc) {
         acquire_shutdown(runtime);

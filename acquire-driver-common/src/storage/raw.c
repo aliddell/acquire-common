@@ -35,14 +35,26 @@ static enum DeviceState
 raw_set(struct Storage* self_, const struct StorageProperties* properties)
 {
     struct Raw* self = containerof(self_, struct Raw, writer);
-    const char* filename = properties->filename.str;
-    const size_t nbytes = properties->filename.nbytes;
+    CHECK(properties->uri.str);
+    CHECK(properties->uri.nbytes);
+
+    const size_t offset = strlen(properties->uri.str) >= 7 &&
+                              strncmp(properties->uri.str, "file://", 7) == 0
+                            ? 7
+                            : 0;
+    const char* filename = properties->uri.str + offset;
+    const size_t nbytes = properties->uri.nbytes - offset;
 
     // Validate
     CHECK(file_is_writable(filename, nbytes));
 
     // copy in the properties
     CHECK(storage_properties_copy(&self->properties, properties));
+
+    // update the URI if it has a file:// prefix
+    if (offset) {
+        storage_properties_set_uri(&self->properties, filename, nbytes);
+    }
 
     return DeviceState_Armed;
 Error:
@@ -69,9 +81,8 @@ static enum DeviceState
 raw_start(struct Storage* self_)
 {
     struct Raw* self = containerof(self_, struct Raw, writer);
-    CHECK(file_create(&self->file,
-                      self->properties.filename.str,
-                      self->properties.filename.nbytes));
+    CHECK(file_create(
+      &self->file, self->properties.uri.str, self->properties.uri.nbytes));
     LOG("RAW: Frame header size %d bytes", (int)sizeof(struct VideoFrame));
     return DeviceState_Running;
 Error:
@@ -132,7 +143,8 @@ raw_init()
                                   sizeof("out.raw"),
                                   0,
                                   0,
-                                  pixel_scale_um));
+                                  pixel_scale_um,
+                                  0));
     self->writer =
       (struct Storage){ .state = DeviceState_AwaitingConfiguration,
                         .set = raw_set,

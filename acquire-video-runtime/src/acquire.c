@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#undef max
 #define max(a, b) ((a) < (b) ? (b) : (a))
 
 #define containerof(ptr, T, V) ((T*)(((char*)(ptr)) - offsetof(T, V)))
@@ -262,7 +263,8 @@ configure_video_stream(struct video_s* const video,
 
     int is_ok = 1;
     if (pcamera->identifier.kind == DeviceKind_None) {
-        is_ok &= (Device_Ok == device_manager_select_default(
+        is_ok &= (Device_Ok ==
+                  device_manager_select_default(
                     device_manager, DeviceKind_Camera, &pcamera->identifier));
     }
 
@@ -277,8 +279,9 @@ configure_video_stream(struct video_s* const video,
                                      pvideo->frame_average_count) == Device_Ok);
 
     if (pstorage->identifier.kind == DeviceKind_None) {
-        is_ok &= (Device_Ok == device_manager_select_default(
-                                 device_manager, DeviceKind_Storage, &pstorage->identifier));
+        is_ok &= (Device_Ok ==
+                  device_manager_select_default(
+                    device_manager, DeviceKind_Storage, &pstorage->identifier));
     }
     is_ok &= (video_sink_configure(&video->sink,
                                    device_manager,
@@ -559,9 +562,9 @@ acquire_stop(struct AcquireRuntime* self_)
         ECHO(thread_join(&video->sink.thread));
         channel_accept_writes(&video->sink.in, 1);
 
-        // Flush the monitor's read region if it hasn't already been released.
-        // This takes at most 2 iterations.
-        {
+        // If the monitor has been initialized and its read region hasn't
+        // already been released, flush it. This takes at most 2 iterations.
+        if (video->monitor.reader.id) {
             size_t nbytes;
             do {
                 struct slice slice =

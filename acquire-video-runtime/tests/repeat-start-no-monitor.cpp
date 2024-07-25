@@ -1,13 +1,12 @@
-//! @file abort-while-waiting-for-trigger.cpp
-//! Test: Aborting an acquisition while waiting for a trigger should return
-//! the runtime to a stopped state without generating errors.
+/// @file repeat-start-no-monitor.cpp
+/// Test that we can repeatedly acquire without unwittingly initializing the
+/// monitor reader.
 
 #include "acquire.h"
 #include "device/hal/device.manager.h"
-#include "device/props/components.h"
-#include "logger.h"
 #include "platform.h"
-#include <cstring>
+#include "logger.h"
+
 #include <cstdio>
 #include <stdexcept>
 
@@ -48,73 +47,69 @@ reporter(int is_error,
 #define DEVOK(e) CHECK(Device_Ok == (e))
 #define OK(e) CHECK(AcquireStatus_Ok == (e))
 
-/// @returns the index of the software trigger line or -1 if none is found
-static uint8_t
-select_software_trigger_line(const AcquirePropertyMetadata* metadata)
+void
+configure(AcquireRuntime* runtime)
 {
-    // get the software trigger line
-    int i_line = -1;
-    {
-        for (int i = 0; i < metadata->video[0].camera.digital_lines.line_count;
-             ++i) {
-            if (strcmp(metadata->video[0].camera.digital_lines.names[i],
-                       "software") == 0)
-                i_line = i;
-        }
-        EXPECT(i_line >= 0, "Did not find software trigger line.");
-        LOG("Software trigger line: %d", i_line);
-    }
-    return (uint8_t)i_line;
-}
+    CHECK(runtime);
 
-static void
-setup(AcquireRuntime* runtime)
-{
-    auto dm = acquire_device_manager(runtime);
+    const DeviceManager* dm = acquire_device_manager(runtime);
+    CHECK(dm);
+
     AcquireProperties props = {};
+    OK(acquire_get_configuration(runtime, &props));
+
+    // configure camera
     DEVOK(device_manager_select(dm,
                                 DeviceKind_Camera,
-                                SIZED("simulated: empty") - 1,
+                                SIZED("simulated.*empty.*") - 1,
                                 &props.video[0].camera.identifier));
+
+    props.video[0].camera.settings.binning = 1;
+    props.video[0].camera.settings.pixel_type = SampleType_u16;
+    props.video[0].camera.settings.shape = {
+        .x = 2304,
+        .y = 2304,
+    };
+
+    // configure acquisition
+    props.video[0].max_frame_count = 500;
+
+    // configure storage
     DEVOK(device_manager_select(dm,
                                 DeviceKind_Storage,
                                 SIZED("trash") - 1,
                                 &props.video[0].storage.identifier));
-    props.video[0].camera.settings.input_triggers.frame_start.enable = 1;
-    props.video[0].camera.settings.input_triggers.frame_start.edge =
-      TriggerEdge_Rising;
-    props.video[0].max_frame_count = 10;
-    OK(acquire_configure(runtime, &props));
-
-    AcquirePropertyMetadata metadata = { 0 };
-    OK(acquire_get_configuration_metadata(runtime, &metadata));
-    props.video[0].camera.settings.input_triggers.frame_start = {
-        .enable = 1,
-        .line = select_software_trigger_line(&metadata),
-        .kind = Signal_Input,
-        .edge = TriggerEdge_Rising,
-    };
+    storage_properties_init(
+      &props.video[0].storage.settings, 0, nullptr, 0, nullptr, 0, { 0 }, 0);
 
     OK(acquire_configure(runtime, &props));
+}
+
+void
+acquire(AcquireRuntime* runtime)
+{
+    CHECK(runtime);
+
+    OK(acquire_start(runtime));
+    OK(acquire_stop(runtime));
 }
 
 int
 main()
 {
-    auto runtime = acquire_init(reporter);
+    AcquireRuntime* runtime = acquire_init(reporter);
+
     try {
-        CHECK(runtime);
-        setup(runtime);
-        OK(acquire_start(runtime));
-        clock_sleep_ms(0, 500);
-        OK(acquire_abort(runtime));
-        OK(acquire_shutdown(runtime));
-        return 0;
-    } catch (const std::runtime_error& e) {
-        ERR("Runtime error: %s", e.what());
-    } catch (...) {
-        ERR("Uncaught exception");
+        for (auto i = 0; i < 2; ++i) {
+            configure(runtime);
+            acquire(runtime);
+        }
+    } catch (const std::exception& e) {
+        ERR("Caught exception: %s", e.what());
+        acquire_shutdown(runtime);
+        return 1;
     }
-    acquire_shutdown(runtime);
-    return 1;
+
+    OK(acquire_shutdown(runtime));
+    return 0;
 }

@@ -4,6 +4,7 @@
 #include "platform.h"
 
 #include <cstddef>
+#include <cstring>
 #include <exception>
 #include <stdexcept>
 #include <string>
@@ -424,10 +425,15 @@ Error:
 int
 Tiff::set(const struct StorageProperties* settings) noexcept
 {
-    EXPECT(settings->filename.str, "Filename string is NULL.");
-    EXPECT(settings->filename.nbytes, "Filename string is zero size.");
+    EXPECT(settings->uri.str, "Filename string is NULL.");
+    EXPECT(settings->uri.nbytes, "Filename string is zero size.");
     {
-        string filename(settings->filename.str);
+        const size_t offset = strlen(settings->uri.str) >= 7 &&
+                                  strncmp(settings->uri.str, "file://", 7) == 0
+                                ? 7
+                                : 0;
+        string filename(settings->uri.str + offset,
+                        settings->uri.nbytes - offset);
 
         // Validate and copy the filename
         CHECK(file_is_writable(filename.c_str(), filename.length()));
@@ -451,8 +457,8 @@ Error:
 void
 Tiff::get(struct StorageProperties* settings) const noexcept
 {
-    settings->filename.str = (char*)filename_.c_str();
-    settings->filename.nbytes = filename_.size();
+    settings->uri.str = (char*)filename_.c_str();
+    settings->uri.nbytes = filename_.size();
     settings->pixel_scale_um = pixel_scale_um_;
 }
 
