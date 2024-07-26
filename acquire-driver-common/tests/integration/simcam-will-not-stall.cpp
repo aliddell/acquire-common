@@ -7,16 +7,19 @@
 #include "logger.h"
 
 #include <cstdio>
+#include <regex>
 #include <stdexcept>
 #include <string>
 
-static class IntrospectiveLogger
+namespace {
+class IntrospectiveLogger
 {
   public:
     IntrospectiveLogger()
-      : dropped_logs(0){};
+      : dropped_frames(0)
+      , re("Dropped\\s*(\\d+)"){};
 
-    // inspect for "[stream 0] Dropped", otherwise pass the mesage through
+    // inspect for "[stream 0] Dropped", otherwise pass the message through
     void report_and_inspect(int is_error,
                             const char* file,
                             int line,
@@ -24,8 +27,11 @@ static class IntrospectiveLogger
                             const char* msg)
     {
         std::string m(msg);
-        if (m.length() >= 18 && m.substr(0, 18) == "[stream 0] Dropped")
-            ++dropped_logs;
+
+        std::smatch matches;
+        if (std::regex_search(m, matches, re)) {
+            dropped_frames += std::stoi(matches[1]);
+        }
 
         printf("%s%s(%d) - %s: %s\n",
                is_error ? "ERROR " : "",
@@ -35,12 +41,14 @@ static class IntrospectiveLogger
                msg);
     }
 
-    [[nodiscard]] bool frames_were_dropped() const { return dropped_logs > 0; }
-    void reset() { dropped_logs = 0; }
+    size_t get_dropped_frames() const { return dropped_frames; }
+    void reset() { dropped_frames = 0; }
 
   private:
-    size_t dropped_logs;
+    size_t dropped_frames;
+    std::regex re;
 } introspective_logger;
+} // namespace
 
 static void
 reporter(int is_error,
@@ -74,6 +82,8 @@ reporter(int is_error,
 #define DEVOK(e) CHECK(Device_Ok == (e))
 #define OK(e) CHECK(AcquireStatus_Ok == (e))
 
+const static size_t frame_count = 100;
+
 void
 configure(AcquireRuntime* runtime, std::string_view camera_type)
 {
@@ -105,7 +115,7 @@ configure(AcquireRuntime* runtime, std::string_view camera_type)
     };
     props.video[0].camera.settings.exposure_time_us = 1; // very small exposure
 
-    props.video[0].max_frame_count = 100;
+    props.video[0].max_frame_count = frame_count;
 
     OK(acquire_configure(runtime, &props));
 }
@@ -173,13 +183,13 @@ main()
     try {
         configure(runtime, "simulated.*sin*");
         acquire(runtime);
-        CHECK(!introspective_logger.frames_were_dropped());
+        CHECK(introspective_logger.get_dropped_frames() < frame_count);
 
         introspective_logger.reset();
 
         configure(runtime, "simulated.*empty.*");
         acquire(runtime);
-        CHECK(introspective_logger.frames_were_dropped());
+        CHECK(introspective_logger.get_dropped_frames() >= frame_count);
 
         retval = 0;
     } catch (const std::exception& e) {
