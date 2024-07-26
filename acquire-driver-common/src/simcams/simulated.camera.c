@@ -63,9 +63,6 @@ struct SimulatedCamera
         struct clock throttle;
         int is_running;
         struct thread thread;
-        struct lock lock;
-        int hold_for_capture;
-        struct condition_variable ready_to_capture;
     } streamer;
 
     struct
@@ -76,6 +73,7 @@ struct SimulatedCamera
         int64_t frame_id;
         int64_t last_emitted_frame_id;
         struct condition_variable frame_ready;
+        uint8_t frame_wanted;
     } im;
 
     struct
@@ -220,27 +218,50 @@ simulated_camera_streamer_thread(struct SimulatedCamera* self)
 {
     clock_init(&self->streamer.throttle);
 
+    size_t bytes_of_data = aligned_bytes_of_image(&self->im.shape);
+    uint8_t* data = (uint8_t*)malloc(bytes_of_data);
+    int64_t frame_id = self->im.frame_id;
+
+    const float exposure_time_ms = self->properties.exposure_time_us * 1e-3f;
+
     while (self->streamer.is_running) {
+        if (self->properties.input_triggers.frame_start.enable) {
+            ECHO(lock_acquire(&self->im.lock));
+            while (!self->software_trigger.triggered) {
+                ECHO(condition_variable_wait(
+                  &self->software_trigger.trigger_ready, &self->im.lock));
+            }
+            self->software_trigger.triggered = 0;
+            ECHO(lock_release(&self->im.lock));
+        }
+
+        clock_tic(&self->streamer.throttle);
+
         struct ImageShape full = { 0 };
         uint32_t origin[2] = { 0, 0 };
 
-        ECHO(lock_acquire(&self->streamer.lock));
-        while (self->streamer.hold_for_capture) {
-            condition_variable_wait(&self->streamer.ready_to_capture,
-                                    &self->streamer.lock);
+        // compute the full resolution shape and offset
+        {
+            ECHO(lock_acquire(&self->im.lock));
+            ECHO(compute_full_resolution_shape_and_offset(self, &full, origin));
+            ECHO(lock_release(&self->im.lock));
+
+            size_t nbytes = aligned_bytes_of_image(&full);
+            if (nbytes > bytes_of_data) {
+                free(data);
+                data = (uint8_t*)malloc(nbytes);
+                bytes_of_data = nbytes;
+            }
         }
-        ECHO(lock_release(&self->streamer.lock));
 
-        ECHO(lock_acquire(&self->im.lock));
-        ECHO(compute_full_resolution_shape_and_offset(self, &full, origin));
-
+        // generate the image
         switch (self->kind) {
             case BasicDevice_Camera_Random:
-                im_fill_rand(&full, self->im.data);
+                im_fill_rand(&full, data);
                 break;
             case BasicDevice_Camera_Sin:
                 ECHO(im_fill_pattern(
-                  &full, (float)origin[0], (float)origin[1], self->im.data));
+                  &full, (float)origin[0], (float)origin[1], data));
                 break;
             case BasicDevice_Camera_Empty:
                 break; // do nothing
@@ -249,36 +270,48 @@ simulated_camera_streamer_thread(struct SimulatedCamera* self)
                   "Unexpected index for the kind of simulated camera. Got: %d",
                   self->kind);
         }
-        {
+
+        // apply binning if applicable
+        if (self->properties.binning > 1) {
             int w = full.dims.width;
             int h = full.dims.height;
             int b = self->properties.binning >> 1;
             while (b) {
-                ECHO(bin2(self->im.data, w, h));
+                ECHO(bin2(data, w, h));
                 b >>= 1;
                 w >>= 1;
                 h >>= 1;
             }
         }
 
-        if (self->properties.input_triggers.frame_start.enable) {
-            while (!self->software_trigger.triggered) {
-                ECHO(condition_variable_wait(
-                  &self->software_trigger.trigger_ready, &self->im.lock));
-            }
-            self->software_trigger.triggered = 0;
+        ++frame_id;
+
+        float toc = (float)clock_toc_ms(&self->streamer.throttle);
+
+        // TODO (aliddell):
+        // preferably this would be a wait on a condition variable with a
+        // timeout, but we don't have that in the platform yet.
+        if (self->streamer.is_running && toc < exposure_time_ms) {
+            clock_sleep_ms(&self->streamer.throttle, exposure_time_ms - toc);
         }
 
-        self->hardware_timestamp = clock_tic(0);
-        ++self->im.frame_id;
+        if (self->im.frame_wanted) {
+            ECHO(lock_acquire(&self->im.lock));
+
+            if (self->kind != BasicDevice_Camera_Empty) {
+                memcpy(self->im.data, data, bytes_of_data);
+            }
+
+            self->hardware_timestamp = clock_tic(0);
+            self->im.frame_id = frame_id;
+            self->im.frame_wanted = 0;
+            ECHO(lock_release(&self->im.lock));
+        }
 
         ECHO(condition_variable_notify_all(&self->im.frame_ready));
-        ECHO(lock_release(&self->im.lock));
-
-        if (self->streamer.is_running)
-            clock_sleep_ms(&self->streamer.throttle,
-                           self->properties.exposure_time_us * 1e-3f);
     }
+
+    free(data);
 }
 
 //
@@ -435,6 +468,8 @@ simcam_execute_trigger(struct Camera* camera)
     struct SimulatedCamera* self =
       containerof(camera, struct SimulatedCamera, camera);
 
+    self->im.frame_wanted = 1;
+
     lock_acquire(&self->im.lock);
     self->software_trigger.triggered = 1;
     condition_variable_notify_all(&self->software_trigger.trigger_ready);
@@ -470,17 +505,12 @@ simcam_get_frame(struct Camera* camera,
     CHECK(*nbytes >= bytes_of_image(&self->im.shape));
     CHECK(self->streamer.is_running);
 
-    self->streamer.hold_for_capture = 1;
+    self->im.frame_wanted = 1;
 
     TRACE("last: %5d current %5d",
           self->im.last_emitted_frame_id,
           self->im.frame_id);
     ECHO(lock_acquire(&self->im.lock));
-
-    ECHO(lock_acquire(&self->streamer.lock));
-    self->streamer.hold_for_capture = 0;
-    condition_variable_notify_all(&self->streamer.ready_to_capture);
-    ECHO(lock_release(&self->streamer.lock));
 
     while (self->streamer.is_running &&
            self->im.last_emitted_frame_id >= self->im.frame_id) {
@@ -555,6 +585,7 @@ simcam_make_camera(enum BasicDeviceKind kind)
             },
             .type=properties.pixel_type
           },
+          .frame_wanted = 0,
         },
         .camera={
           .state = DeviceState_AwaitingConfiguration,
@@ -572,9 +603,6 @@ simcam_make_camera(enum BasicDeviceKind kind)
     lock_init(&self->im.lock);
     condition_variable_init(&self->im.frame_ready);
     condition_variable_init(&self->software_trigger.trigger_ready);
-
-    lock_init(&self->streamer.lock);
-    condition_variable_init(&self->streamer.ready_to_capture);
 
     return &self->camera;
 Error:
