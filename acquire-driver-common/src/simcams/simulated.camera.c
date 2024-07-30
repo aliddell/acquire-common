@@ -194,6 +194,19 @@ compute_strides(struct ImageShape* shape)
         st[i] = st[i - 1] * dims[i - 1];
 }
 
+static void*
+checked_realloc(void* in, size_t nbytes)
+{
+    void* out = realloc(in, nbytes);
+    EXPECT(out, "Allocation of %llu bytes failed.", nbytes);
+
+Finalize:
+    return out;
+Error:
+    free(in);
+    goto Finalize;
+}
+
 static void
 compute_full_resolution_shape_and_offset(const struct SimulatedCamera* self,
                                          struct ImageShape* shape,
@@ -364,15 +377,18 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
     if (!settings->binning)
         settings->binning = 1;
 
-    EXPECT(popcount_u8(settings->binning) == 1,
-           "Binning must be a power of two. Got %d.",
-           settings->binning);
+    if (popcount_u8(settings->binning) != 1) {
+        LOGE("Binning must be a power of two. Got %d.", settings->binning);
+        return Device_Err;
+    }
 
     if (self->properties.input_triggers.frame_start.enable &&
         !settings->input_triggers.frame_start.enable) {
         // fire if disabling the software trigger while live
         simcam_execute_trigger(camera);
     }
+
+    enum DeviceStatusCode status = Device_Ok;
 
     ECHO(lock_acquire(&self->im.lock));
     self->properties = *settings;
@@ -406,28 +422,15 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
     };
 
     size_t nbytes = aligned_bytes_of_image(shape);
-    free(self->im.frame_data);
+    CHECK(self->im.frame_data = checked_realloc(self->im.frame_data, nbytes));
+    CHECK(self->im.render_data = checked_realloc(self->im.render_data, nbytes));
 
-    self->im.frame_data = malloc(nbytes);
-    if (!self->im.frame_data) {
-        LOGE("Allocation of %llu bytes failed.", nbytes);
-        lock_release(&self->im.lock);
-        goto Error;
-    }
-
-    free(self->im.render_data);
-
-    self->im.render_data = malloc(nbytes);
-    if (!self->im.render_data) {
-        LOGE("Allocation of %llu bytes failed.", nbytes);
-        lock_release(&self->im.lock);
-        goto Error;
-    }
-
+Finalize:
     lock_release(&self->im.lock);
-    return Device_Ok;
+    return status;
 Error:
-    return Device_Err;
+    status = Device_Err;
+    goto Finalize;
 }
 
 static enum DeviceStatusCode
@@ -540,10 +543,9 @@ simcam_close_camera(struct Camera* camera_)
       containerof(camera_, struct SimulatedCamera, camera);
     EXPECT(camera_, "Invalid NULL parameter");
     simcam_stop(&camera->camera);
-    if (camera->im.frame_data)
-        free(camera->im.frame_data);
-    if (camera->im.render_data)
-        free(camera->im.render_data);
+
+    free(camera->im.frame_data);
+    free(camera->im.render_data);
     free(camera);
     return Device_Ok;
 Error:
