@@ -406,8 +406,7 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
     };
 
     size_t nbytes = aligned_bytes_of_image(shape);
-    if (self->im.frame_data)
-        free(self->im.frame_data);
+    free(self->im.frame_data);
 
     self->im.frame_data = malloc(nbytes);
     if (!self->im.frame_data) {
@@ -416,8 +415,7 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
         goto Error;
     }
 
-    if (self->im.render_data)
-        free(self->im.render_data);
+    free(self->im.render_data);
 
     self->im.render_data = malloc(nbytes);
     if (!self->im.render_data) {
