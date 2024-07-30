@@ -67,12 +67,14 @@ struct SimulatedCamera
 
     struct
     {
-        void* data;
+        void* frame_data;  // for storing the image
+        void* render_data; // for rendering the image
         struct ImageShape shape;
         struct lock lock;
         int64_t frame_id;
         int64_t last_emitted_frame_id;
         struct condition_variable frame_ready;
+        uint8_t frame_wanted;
     } im;
 
     struct
@@ -192,6 +194,19 @@ compute_strides(struct ImageShape* shape)
         st[i] = st[i - 1] * dims[i - 1];
 }
 
+static void*
+checked_realloc(void* in, size_t nbytes)
+{
+    void* out = realloc(in, nbytes);
+    EXPECT(out, "Allocation of %llu bytes failed.", nbytes);
+
+Finalize:
+    return out;
+Error:
+    free(in);
+    goto Finalize;
+}
+
 static void
 compute_full_resolution_shape_and_offset(const struct SimulatedCamera* self,
                                          struct ImageShape* shape,
@@ -217,20 +232,38 @@ simulated_camera_streamer_thread(struct SimulatedCamera* self)
 {
     clock_init(&self->streamer.throttle);
 
+    int64_t frame_id = self->im.frame_id;
     while (self->streamer.is_running) {
         struct ImageShape full = { 0 };
         uint32_t origin[2] = { 0, 0 };
 
         ECHO(lock_acquire(&self->im.lock));
+        while (self->properties.input_triggers.frame_start.enable &&
+               !self->software_trigger.triggered) {
+            ECHO(condition_variable_wait(&self->software_trigger.trigger_ready,
+                                         &self->im.lock));
+        }
+        self->software_trigger.triggered = 0;
+
+        // compute the full resolution shape and offset
         ECHO(compute_full_resolution_shape_and_offset(self, &full, origin));
 
+        const float exposure_time_ms =
+          self->properties.exposure_time_us * 1e-3f;
+        ECHO(lock_release(&self->im.lock));
+
+        clock_tic(&self->streamer.throttle);
+
+        // generate the image
         switch (self->kind) {
             case BasicDevice_Camera_Random:
-                im_fill_rand(&full, self->im.data);
+                im_fill_rand(&full, self->im.render_data);
                 break;
             case BasicDevice_Camera_Sin:
-                ECHO(im_fill_pattern(
-                  &full, (float)origin[0], (float)origin[1], self->im.data));
+                ECHO(im_fill_pattern(&full,
+                                     (float)origin[0],
+                                     (float)origin[1],
+                                     self->im.render_data));
                 break;
             case BasicDevice_Camera_Empty:
                 break; // do nothing
@@ -239,35 +272,44 @@ simulated_camera_streamer_thread(struct SimulatedCamera* self)
                   "Unexpected index for the kind of simulated camera. Got: %d",
                   self->kind);
         }
-        {
+
+        // apply binning if applicable
+        if (self->properties.binning > 1) {
             int w = full.dims.width;
             int h = full.dims.height;
             int b = self->properties.binning >> 1;
             while (b) {
-                ECHO(bin2(self->im.data, w, h));
+                ECHO(bin2(self->im.render_data, w, h));
                 b >>= 1;
                 w >>= 1;
                 h >>= 1;
             }
         }
 
-        if (self->properties.input_triggers.frame_start.enable) {
-            while (!self->software_trigger.triggered) {
-                ECHO(condition_variable_wait(
-                  &self->software_trigger.trigger_ready, &self->im.lock));
-            }
-            self->software_trigger.triggered = 0;
+        ++frame_id;
+
+        // sleep for the remainder of the exposure time
+        float toc = (float)clock_toc_ms(&self->streamer.throttle);
+        if (self->streamer.is_running) {
+            clock_sleep_ms(&self->streamer.throttle, exposure_time_ms - toc);
         }
 
-        self->hardware_timestamp = clock_tic(0);
-        ++self->im.frame_id;
+        if (self->im.frame_wanted) {
+            ECHO(lock_acquire(&self->im.lock));
 
-        ECHO(condition_variable_notify_all(&self->im.frame_ready));
-        ECHO(lock_release(&self->im.lock));
+            {
+                void* const tmp = self->im.frame_data;
+                self->im.frame_data = self->im.render_data;
+                self->im.render_data = tmp;
+            }
 
-        if (self->streamer.is_running)
-            clock_sleep_ms(&self->streamer.throttle,
-                           self->properties.exposure_time_us * 1e-3f);
+            self->hardware_timestamp = clock_tic(0);
+            self->im.frame_id = frame_id;
+            self->im.frame_wanted = 0;
+
+            ECHO(condition_variable_notify_all(&self->im.frame_ready));
+            ECHO(lock_release(&self->im.lock));
+        }
     }
 }
 
@@ -335,9 +377,10 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
     if (!settings->binning)
         settings->binning = 1;
 
-    EXPECT(popcount_u8(settings->binning) == 1,
-           "Binning must be a power of two. Got %d.",
-           settings->binning);
+    if (popcount_u8(settings->binning) != 1) {
+        LOGE("Binning must be a power of two. Got %d.", settings->binning);
+        return Device_Err;
+    }
 
     if (self->properties.input_triggers.frame_start.enable &&
         !settings->input_triggers.frame_start.enable) {
@@ -345,6 +388,9 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
         simcam_execute_trigger(camera);
     }
 
+    enum DeviceStatusCode status = Device_Ok;
+
+    ECHO(lock_acquire(&self->im.lock));
     self->properties = *settings;
     self->properties.pixel_type = settings->pixel_type;
     self->properties.input_triggers = (struct camera_properties_input_triggers_s){
@@ -376,12 +422,15 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
     };
 
     size_t nbytes = aligned_bytes_of_image(shape);
-    self->im.data = malloc(nbytes);
-    EXPECT(self->im.data, "Allocation of %llu bytes failed.", nbytes);
+    CHECK(self->im.frame_data = checked_realloc(self->im.frame_data, nbytes));
+    CHECK(self->im.render_data = checked_realloc(self->im.render_data, nbytes));
 
-    return Device_Ok;
+Finalize:
+    lock_release(&self->im.lock);
+    return status;
 Error:
-    return Device_Err;
+    status = Device_Err;
+    goto Finalize;
 }
 
 static enum DeviceStatusCode
@@ -426,6 +475,7 @@ simcam_execute_trigger(struct Camera* camera)
       containerof(camera, struct SimulatedCamera, camera);
 
     lock_acquire(&self->im.lock);
+    self->im.frame_wanted = 1;
     self->software_trigger.triggered = 1;
     condition_variable_notify_all(&self->software_trigger.trigger_ready);
     lock_release(&self->im.lock);
@@ -464,6 +514,8 @@ simcam_get_frame(struct Camera* camera,
           self->im.last_emitted_frame_id,
           self->im.frame_id);
     ECHO(lock_acquire(&self->im.lock));
+    self->im.frame_wanted = 1;
+
     while (self->streamer.is_running &&
            self->im.last_emitted_frame_id >= self->im.frame_id) {
         ECHO(condition_variable_wait(&self->im.frame_ready, &self->im.lock));
@@ -473,7 +525,7 @@ simcam_get_frame(struct Camera* camera,
         goto Shutdown;
     }
 
-    memcpy(im, self->im.data, bytes_of_image(&self->im.shape)); // NOLINT
+    memcpy(im, self->im.frame_data, bytes_of_image(&self->im.shape)); // NOLINT
     info_out->shape = self->im.shape;
     info_out->hardware_frame_id = self->im.frame_id;
     info_out->hardware_timestamp = self->hardware_timestamp;
@@ -491,8 +543,9 @@ simcam_close_camera(struct Camera* camera_)
       containerof(camera_, struct SimulatedCamera, camera);
     EXPECT(camera_, "Invalid NULL parameter");
     simcam_stop(&camera->camera);
-    if (camera->im.data)
-        free(camera->im.data);
+
+    free(camera->im.frame_data);
+    free(camera->im.render_data);
     free(camera);
     return Device_Ok;
 Error:
@@ -521,7 +574,8 @@ simcam_make_camera(enum BasicDeviceKind kind)
         .properties = properties,
         .kind=kind,
         .im={
-          .data=0,
+          .frame_data=0,
+          .render_data=0,
           .shape = {
             .dims = {
               .channels = 1,
@@ -537,6 +591,7 @@ simcam_make_camera(enum BasicDeviceKind kind)
             },
             .type=properties.pixel_type
           },
+          .frame_wanted = 0,
         },
         .camera={
           .state = DeviceState_AwaitingConfiguration,

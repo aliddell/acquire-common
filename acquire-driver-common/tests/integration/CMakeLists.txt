@@ -14,6 +14,7 @@ else ()
             can-set-with-file-uri
             configure-triggering
             list-digital-lines
+            simcam-will-not-stall
             software-trigger-acquires-single-frames
             switch-storage-identifier
             write-side-by-side-tiff
