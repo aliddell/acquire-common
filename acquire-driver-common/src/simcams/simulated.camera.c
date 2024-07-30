@@ -284,9 +284,10 @@ simulated_camera_streamer_thread(struct SimulatedCamera* self)
         if (self->im.frame_wanted) {
             ECHO(lock_acquire(&self->im.lock));
 
-            size_t nbytes = aligned_bytes_of_image(&self->im.shape);
-            if (self->kind != BasicDevice_Camera_Empty) {
-                memcpy(self->im.frame_data, self->im.render_data, nbytes);
+            {
+                void* const tmp = self->im.frame_data;
+                self->im.frame_data = self->im.render_data;
+                self->im.render_data = tmp;
             }
 
             self->hardware_timestamp = clock_tic(0);
@@ -373,6 +374,7 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
         simcam_execute_trigger(camera);
     }
 
+    ECHO(lock_acquire(&self->im.lock));
     self->properties = *settings;
     self->properties.pixel_type = settings->pixel_type;
     self->properties.input_triggers = (struct camera_properties_input_triggers_s){
@@ -404,12 +406,27 @@ simcam_set(struct Camera* camera, struct CameraProperties* settings)
     };
 
     size_t nbytes = aligned_bytes_of_image(shape);
+    if (self->im.frame_data)
+        free(self->im.frame_data);
+
     self->im.frame_data = malloc(nbytes);
-    EXPECT(self->im.frame_data, "Allocation of %llu bytes failed.", nbytes);
+    if (!self->im.frame_data) {
+        LOGE("Allocation of %llu bytes failed.", nbytes);
+        lock_release(&self->im.lock);
+        goto Error;
+    }
+
+    if (self->im.render_data)
+        free(self->im.render_data);
 
     self->im.render_data = malloc(nbytes);
-    EXPECT(self->im.render_data, "Allocation of %llu bytes failed.", nbytes);
+    if (!self->im.render_data) {
+        LOGE("Allocation of %llu bytes failed.", nbytes);
+        lock_release(&self->im.lock);
+        goto Error;
+    }
 
+    lock_release(&self->im.lock);
     return Device_Ok;
 Error:
     return Device_Err;
