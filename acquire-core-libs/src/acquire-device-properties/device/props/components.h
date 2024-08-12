@@ -145,6 +145,11 @@ extern "C"
     size_t bytes_of_type(enum SampleType type);
     size_t bytes_of_image(const struct ImageShape* shape);
 
+    /// @brief Copy the contents of `src` into `dst`.
+    /// @details Will reallocate storage for `dst->str` if necessary.
+    /// @returns 1 on success, otherwise 0.
+    int copy_string(struct String* dst, const struct String* src);
+
 #ifdef __cplusplus
 }
 #endif
