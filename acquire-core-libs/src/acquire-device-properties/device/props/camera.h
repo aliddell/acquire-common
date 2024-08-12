@@ -113,6 +113,7 @@ extern "C"
                 uint8_t output;
             } acquisition_start, exposure, frame_start;
         } triggers;
+        struct String name;
     };
 
 #ifdef __cplusplus

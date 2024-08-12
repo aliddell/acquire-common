@@ -72,6 +72,7 @@ extern "C"
         uint8_t sharding_is_supported;
         uint8_t multiscale_is_supported;
         uint8_t s3_is_supported;
+        struct String name;
     };
 
     /// Initializes StorageProperties, allocating string storage on the heap

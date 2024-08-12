@@ -397,12 +397,24 @@ acquire_get_configuration_metadata(const struct AcquireRuntime* self_,
     CHECK(metadata);
     self = containerof(self_, struct runtime, handle);
     for (int i = 0; i < countof(metadata->video); ++i) {
-        if (self->video[i].source.camera)
+        if (self->video[i].source.camera) {
             camera_get_meta(self->video[i].source.camera,
                             &metadata->video[i].camera);
-        if (self->video[i].sink.storage)
+            metadata->video[i].camera.name = (struct String){
+                .is_ref = 1,
+                .nbytes = strlen(self->video[i].source.last_camera_id.name) + 1,
+                .str = (char*)self->video[i].source.last_camera_id.name
+            };
+        }
+        if (self->video[i].sink.storage) {
             storage_get_meta(self->video[i].sink.storage,
                              &metadata->video[i].storage);
+            metadata->video[i].storage.name = (struct String){
+                .is_ref = 1,
+                .nbytes = strlen(self->video[i].sink.identifier.name) + 1,
+                .str = (char*)self->video[i].sink.identifier.name
+            };
+        }
         metadata->video[i].max_frame_count = (struct Property){
             .writable = 1,
             .low = 0.0f,
