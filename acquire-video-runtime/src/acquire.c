@@ -400,20 +400,27 @@ acquire_get_configuration_metadata(const struct AcquireRuntime* self_,
         if (self->video[i].source.camera) {
             camera_get_meta(self->video[i].source.camera,
                             &metadata->video[i].camera);
-            metadata->video[i].camera.name = (struct String){
-                .is_ref = 1,
-                .nbytes = strlen(self->video[i].source.last_camera_id.name) + 1,
-                .str = (char*)self->video[i].source.last_camera_id.name
-            };
+
+            if (!metadata->video[i].camera.name.str) {
+                metadata->video[i].camera.name = (struct String){
+                    .is_ref = 1,
+                    .nbytes =
+                      strlen(self->video[i].source.last_camera_id.name) + 1,
+                    .str = (char*)self->video[i].source.last_camera_id.name
+                };
+            }
         }
         if (self->video[i].sink.storage) {
             storage_get_meta(self->video[i].sink.storage,
                              &metadata->video[i].storage);
-            metadata->video[i].storage.name = (struct String){
-                .is_ref = 1,
-                .nbytes = strlen(self->video[i].sink.identifier.name) + 1,
-                .str = (char*)self->video[i].sink.identifier.name
-            };
+
+            if (!metadata->video[i].storage.name.str) {
+                metadata->video[i].storage.name = (struct String){
+                    .is_ref = 1,
+                    .nbytes = strlen(self->video[i].sink.identifier.name) + 1,
+                    .str = (char*)self->video[i].sink.identifier.name
+                };
+            }
         }
         metadata->video[i].max_frame_count = (struct Property){
             .writable = 1,

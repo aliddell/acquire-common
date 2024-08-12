@@ -13,6 +13,7 @@ else ()
             abort-while-waiting-for-trigger
             can-set-with-file-uri
             configure-triggering
+            identifier-reported-in-metadata
             list-digital-lines
             simcam-will-not-stall
             software-trigger-acquires-single-frames
