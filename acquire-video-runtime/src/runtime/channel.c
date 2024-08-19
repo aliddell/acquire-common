@@ -165,28 +165,28 @@ channel_read_map(struct channel* self, struct channel_reader* reader)
     reader_initialize(self, reader);
 
     size_t* const cycle = self->holds.cycles + reader->id - 1;
-    size_t* const pos = self->holds.pos + reader->id - 1;
-    uint8_t* out = self->data + *pos;
+    size_t* const tail = self->holds.pos + reader->id - 1;
+    uint8_t* out = self->data + *tail;
 
     if (reader->state == ChannelState_Mapped) {
         reader->status = Channel_Expected_Unmapped_Reader;
-        goto AdvanceToWriterHead;
+        goto AdvanceTailToReaderPos;
     }
 
-    if (*pos == self->head && *cycle == self->cycle) {
+    if (*tail == self->head && *cycle == self->cycle) {
         goto Finalize;
     }
 
-    if (*pos < self->head) {
+    if (*tail < self->head) {
         if (*cycle != self->cycle)
             goto Overflow;
-        nbytes = self->head - *pos; // this will never be 0
+        nbytes = self->head - *tail; // this will never be 0
         reader->pos = self->head;
         reader->cycle = self->cycle;
     } else {
         if (self->cycle != *cycle + 1)
             goto Overflow;
-        nbytes = self->high - *pos;
+        nbytes = self->high - *tail;
         reader->pos = 0;
         reader->cycle = *cycle + 1;
     }
@@ -198,7 +198,7 @@ channel_read_map(struct channel* self, struct channel_reader* reader)
     // here. A call to channel_read_unmap() would return early and not advance
     // the reader's bookmarks in that case, so we need to do it here.
     if (!nbytes) {
-        goto AdvanceToWriterHead;
+        goto AdvanceTailToReaderPos;
     }
 
     reader->state = ChannelState_Mapped;
@@ -208,10 +208,10 @@ Finalize:
     return (struct slice){ .beg = out, .end = out + nbytes };
 Overflow:
     reader->status = Channel_Error;
-AdvanceToWriterHead:
+AdvanceTailToReaderPos:
     out = 0;
     nbytes = 0;
-    *pos = self->head;
+    *tail = reader->pos;
     *cycle = self->cycle;
     goto Finalize;
 }
@@ -226,18 +226,18 @@ channel_read_unmap(struct channel* self,
     lock_acquire(&self->lock);
 
     size_t* const cycle = self->holds.cycles + reader->id - 1;
-    size_t* const pos = self->holds.pos + reader->id - 1;
+    size_t* const tail = self->holds.pos + reader->id - 1;
 
-    size_t length = get_available_byte_count(reader, *pos, *cycle, self->high);
+    size_t length = get_available_byte_count(reader, *tail, *cycle, self->high);
     consumed_bytes = min(length, consumed_bytes);
     if (consumed_bytes >= length) {
         *cycle = reader->cycle;
-        *pos = reader->pos;
+        *tail = reader->pos;
     } else {
-        *pos += consumed_bytes;
+        *tail += consumed_bytes;
     }
-    if (self->head < *pos && *pos == self->high) {
-        *pos = 0;
+    if (self->head < *tail && *tail == self->high) {
+        *tail = 0;
         *cycle += 1;
     }
     reader->state = ChannelState_Unmapped;
