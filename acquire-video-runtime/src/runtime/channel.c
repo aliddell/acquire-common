@@ -191,17 +191,16 @@ channel_read_map(struct channel* self, struct channel_reader* reader)
         reader->cycle = *cycle + 1;
     }
 
-    // Even if nothing is available on the channel, we still need to advance
-    // this reader's position & cycle bookmarks to the position & cycle of the
-    // writer's head. Normally this would happen in channel_read_unmap(), but
-    // because no data is available, we do not set the reader's state to Mapped
-    // here. A call to channel_read_unmap() would return early and not advance
-    // the reader's bookmarks in that case, so we need to do it here.
     if (!nbytes) {
-        goto AdvanceToWriterHead;
+        // If nothing is available to read, we still need to advance this
+        // reader's position & cycle bookmarks to the beginning of the queue and
+        // the writer's cycle, respectively.
+        out = 0;
+        *pos = 0;
+        *cycle = self->cycle;
+    } else {
+        reader->state = ChannelState_Mapped;
     }
-
-    reader->state = ChannelState_Mapped;
 
 Finalize:
     lock_release(&self->lock);

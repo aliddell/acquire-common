@@ -29,6 +29,7 @@ else ()
             filter-video-average
             repeat-start-no-monitor
             aligned-videoframe-pointers
+            sleep-while-inspecting
     )
 
     foreach (name ${tests})
