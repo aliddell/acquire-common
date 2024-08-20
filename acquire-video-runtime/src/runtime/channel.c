@@ -165,53 +165,52 @@ channel_read_map(struct channel* self, struct channel_reader* reader)
     reader_initialize(self, reader);
 
     size_t* const cycle = self->holds.cycles + reader->id - 1;
-    size_t* const tail = self->holds.pos + reader->id - 1;
-    uint8_t* out = self->data + *tail;
+    size_t* const pos = self->holds.pos + reader->id - 1;
+    uint8_t* out = self->data + *pos;
 
     if (reader->state == ChannelState_Mapped) {
         reader->status = Channel_Expected_Unmapped_Reader;
-        goto AdvanceTailToReaderPos;
+        goto AdvanceToWriterHead;
     }
 
-    if (*tail == self->head && *cycle == self->cycle) {
+    if (*pos == self->head && *cycle == self->cycle) {
         goto Finalize;
     }
 
-    if (*tail < self->head) {
+    if (*pos < self->head) {
         if (*cycle != self->cycle)
             goto Overflow;
-        nbytes = self->head - *tail; // this will never be 0
+        nbytes = self->head - *pos; // this will never be 0
         reader->pos = self->head;
         reader->cycle = self->cycle;
     } else {
         if (self->cycle != *cycle + 1)
             goto Overflow;
-        nbytes = self->high - *tail;
+        nbytes = self->high - *pos;
         reader->pos = 0;
         reader->cycle = *cycle + 1;
     }
 
-    // Even if nothing is available on the channel, we still need to advance
-    // this reader's position & cycle bookmarks to the position & cycle of the
-    // writer's head. Normally this would happen in channel_read_unmap(), but
-    // because no data is available, we do not set the reader's state to Mapped
-    // here. A call to channel_read_unmap() would return early and not advance
-    // the reader's bookmarks in that case, so we need to do it here.
     if (!nbytes) {
-        goto AdvanceTailToReaderPos;
+        // If nothing is available to read, we still need to advance this
+        // reader's position & cycle bookmarks to the beginning of the queue and
+        // the writer's cycle, respectively.
+        out = 0;
+        *pos = 0;
+        *cycle = self->cycle;
+    } else {
+        reader->state = ChannelState_Mapped;
     }
-
-    reader->state = ChannelState_Mapped;
 
 Finalize:
     lock_release(&self->lock);
     return (struct slice){ .beg = out, .end = out + nbytes };
 Overflow:
     reader->status = Channel_Error;
-AdvanceTailToReaderPos:
+AdvanceToWriterHead:
     out = 0;
     nbytes = 0;
-    *tail = reader->pos;
+    *pos = self->head;
     *cycle = self->cycle;
     goto Finalize;
 }
@@ -226,18 +225,18 @@ channel_read_unmap(struct channel* self,
     lock_acquire(&self->lock);
 
     size_t* const cycle = self->holds.cycles + reader->id - 1;
-    size_t* const tail = self->holds.pos + reader->id - 1;
+    size_t* const pos = self->holds.pos + reader->id - 1;
 
-    size_t length = get_available_byte_count(reader, *tail, *cycle, self->high);
+    size_t length = get_available_byte_count(reader, *pos, *cycle, self->high);
     consumed_bytes = min(length, consumed_bytes);
     if (consumed_bytes >= length) {
         *cycle = reader->cycle;
-        *tail = reader->pos;
+        *pos = reader->pos;
     } else {
-        *tail += consumed_bytes;
+        *pos += consumed_bytes;
     }
-    if (self->head < *tail && *tail == self->high) {
-        *tail = 0;
+    if (self->head < *pos && *pos == self->high) {
+        *pos = 0;
         *cycle += 1;
     }
     reader->state = ChannelState_Unmapped;
